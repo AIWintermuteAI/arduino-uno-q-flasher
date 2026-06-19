@@ -7,8 +7,8 @@ const STAGES = [
     "push_env",
     "chmod_script",
     "change_password",
-    "run_setup",
     "push_properties",
+    "run_setup",
 ];
 
 const state = {
@@ -18,6 +18,7 @@ const state = {
     cards: new Map(),    // serial -> { card, logEl, progressEl, stageEl, badgeEl, retryBtn, skipInputs }
     runId: null,
     ws: null,
+    wifiOk: false,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -41,13 +42,33 @@ async function refreshHealth() {
             el.textContent = `ADB not found: ${j.adb_error}`;
         } else {
             el.className = "health ok";
-            const pw = j.password_configured ? "pw configured" : "no password (.env)";
+            const pw = j.password_configured ? "device pw set" : "no device pw";
             el.textContent = `ADB ready · ${pw}`;
         }
+        state.wifiOk = j.wifi_ssid_configured && j.wifi_password_configured;
+        renderWifiBanner(j);
+        updateStartButton();
     } catch (e) {
         const el = $("#health");
         el.className = "health bad";
         el.textContent = "backend unreachable";
+    }
+}
+
+function renderWifiBanner(health) {
+    const banner = $("#wifi-banner");
+    const text = $("#wifi-banner-text");
+    if (!health.wifi_ssid_configured && !health.wifi_password_configured) {
+        text.textContent = "WiFi SSID and password not set — devices will fail at setup.";
+        banner.hidden = false;
+    } else if (!health.wifi_ssid_configured) {
+        text.textContent = "WiFi SSID not set — devices will fail at setup.";
+        banner.hidden = false;
+    } else if (!health.wifi_password_configured) {
+        text.textContent = "WiFi password not set — devices will fail at setup.";
+        banner.hidden = false;
+    } else {
+        banner.hidden = true;
     }
 }
 
@@ -85,13 +106,17 @@ function renderDeviceGrid() {
         const stageEl = node.querySelector(".current-stage");
         const logEl = node.querySelector(".log-panel");
         const retryBtn = node.querySelector(".retry-btn");
+        const elapsedEl = node.querySelector(".elapsed");
+        const failureEl = node.querySelector(".failure-reason");
+        const summaryEl = node.querySelector(".summary-panel");
         const skipInputs = Array.from(node.querySelectorAll(".skip-toggle"));
 
         retryBtn.addEventListener("click", () => retryDevice(d.serial));
 
         grid.appendChild(node);
         state.cards.set(d.serial, {
-            card: node, badgeEl, progressEl, stageEl, logEl, retryBtn, skipInputs,
+            card: node, badgeEl, progressEl, stageEl, logEl, retryBtn,
+            elapsedEl, failureEl, summaryEl, skipInputs,
         });
     }
 }
@@ -106,6 +131,58 @@ function wireControls() {
     });
     $("#start-btn").addEventListener("click", startRun);
     $("#retry-failed-btn").addEventListener("click", retryAllFailed);
+    $("#open-settings-btn").addEventListener("click", openSettings);
+    $("#close-settings-btn").addEventListener("click", () => {
+        $("#settings-panel").hidden = true;
+    });
+    $("#save-settings-btn").addEventListener("click", saveSettings);
+}
+
+async function openSettings() {
+    const panel = $("#settings-panel");
+    panel.hidden = false;
+    try {
+        const r = await fetch("/api/settings");
+        const j = await r.json();
+        $("#setting-ssid").value = j.UNOQ_WIFI_SSID || "";
+        $("#setting-wifi-pw").placeholder = j.UNOQ_WIFI_PASSWORD_set ? "(set — leave blank to keep)" : "••••••••";
+        $("#setting-device-pw").placeholder = j.UNOQ_DEFAULT_PASSWORD_set ? "(set — leave blank to keep)" : "••••••••";
+    } catch (e) {
+        $("#settings-status").textContent = `load failed: ${e}`;
+    }
+}
+
+async function saveSettings() {
+    const body = {};
+    const ssid = $("#setting-ssid").value;
+    const wifiPw = $("#setting-wifi-pw").value;
+    const devPw = $("#setting-device-pw").value;
+    // Only send non-empty values; empty means "don't touch".
+    if (ssid !== "") body.UNOQ_WIFI_SSID = ssid;
+    if (wifiPw !== "") body.UNOQ_WIFI_PASSWORD = wifiPw;
+    if (devPw !== "") body.UNOQ_DEFAULT_PASSWORD = devPw;
+    if (Object.keys(body).length === 0) {
+        $("#settings-status").textContent = "nothing to save";
+        return;
+    }
+    try {
+        const r = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            $("#settings-status").textContent = `save failed: ${j.detail || r.status}`;
+            return;
+        }
+        $("#settings-status").textContent = "saved";
+        $("#setting-wifi-pw").value = "";
+        $("#setting-device-pw").value = "";
+        await refreshHealth();
+    } catch (e) {
+        $("#settings-status").textContent = `save error: ${e}`;
+    }
 }
 
 async function onFolderPicked(e) {
@@ -147,8 +224,15 @@ function approxSize(files) {
 }
 
 function updateStartButton() {
-    const ready = state.upload && state.devices.length > 0 && state.runId === null;
+    const ready =
+        state.upload &&
+        state.devices.length > 0 &&
+        state.runId === null &&
+        state.wifiOk;
     $("#start-btn").disabled = !ready;
+    $("#start-btn").title = !state.wifiOk
+        ? "Configure WiFi credentials first"
+        : "";
 }
 
 // ---------- runs ----------
@@ -244,6 +328,9 @@ function handleEvent(ev) {
             c.badgeEl.dataset.status = "running";
             c.badgeEl.textContent = "running";
             c.retryBtn.hidden = true;
+            c.failureEl.hidden = true;
+            c.summaryEl.hidden = true;
+            c.elapsedEl.hidden = true;
             break;
         }
         case "stage": {
@@ -264,12 +351,39 @@ function handleEvent(ev) {
             appendLog(ev.device, prefix + ev.line, cls);
             break;
         }
+        case "setup_summary": {
+            const c = state.cards.get(ev.device);
+            if (!c) return;
+            c.summaryEl.hidden = false;
+            c.summaryEl.querySelector(".summary-status").dataset.status = ev.status;
+            c.summaryEl.querySelector(".summary-status").textContent = ev.status;
+            const t = ev.elapsed_seconds;
+            c.summaryEl.querySelector(".summary-time").textContent =
+                t == null ? "—" : `${Math.floor(t / 60)}m ${String(t % 60).padStart(2, "0")}s`;
+            const ul = c.summaryEl.querySelector(".summary-errors");
+            ul.innerHTML = "";
+            for (const err of ev.errors || []) {
+                const li = document.createElement("li");
+                li.textContent = err;
+                ul.appendChild(li);
+            }
+            break;
+        }
         case "device_finished": {
             const c = state.cards.get(ev.device);
             if (!c) return;
             c.badgeEl.dataset.status = ev.result;
             c.badgeEl.textContent = ev.result;
             c.stageEl.textContent = ev.result;
+            if (ev.elapsed_seconds != null) {
+                const t = Math.round(ev.elapsed_seconds);
+                c.elapsedEl.textContent = `${Math.floor(t / 60)}m ${String(t % 60).padStart(2, "0")}s`;
+                c.elapsedEl.hidden = false;
+            }
+            if (ev.failure_reason) {
+                c.failureEl.textContent = ev.failure_reason;
+                c.failureEl.hidden = false;
+            }
             if (ev.result === "failed") {
                 c.retryBtn.hidden = false;
             } else {
@@ -318,6 +432,9 @@ function resetCard(serial) {
     c.stageEl.textContent = "—";
     c.logEl.innerHTML = "";
     c.retryBtn.hidden = true;
+    c.failureEl.hidden = true;
+    c.summaryEl.hidden = true;
+    c.elapsedEl.hidden = true;
 }
 
 init();

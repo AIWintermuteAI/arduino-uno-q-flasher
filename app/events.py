@@ -10,8 +10,8 @@ Stage = Literal[
     "push_env",
     "chmod_script",
     "change_password",
-    "run_setup",
     "push_properties",
+    "run_setup",
 ]
 
 ALL_STAGES: tuple[Stage, ...] = (
@@ -20,8 +20,8 @@ ALL_STAGES: tuple[Stage, ...] = (
     "push_env",
     "chmod_script",
     "change_password",
-    "run_setup",
     "push_properties",
+    "run_setup",
 )
 
 # Stages the user can toggle off from the UI. The others are required.
@@ -56,6 +56,18 @@ class DeviceFinishedEvent(BaseModel):
     type: Literal["device_finished"] = "device_finished"
     device: str
     result: Literal["success", "failed"]
+    elapsed_seconds: float | None = None
+    failure_reason: str | None = None  # short, UI-friendly reason
+
+
+class SetupSummaryEvent(BaseModel):
+    """Structured summary parsed from the on-device unoq-setup.sh output box."""
+
+    type: Literal["setup_summary"] = "setup_summary"
+    device: str
+    status: Literal["SUCCESS", "FAILED"]
+    elapsed_seconds: int | None = None  # from "Total time : 02m 14s"
+    errors: list[str] = []
 
 
 class RunFinishedEvent(BaseModel):
@@ -69,6 +81,7 @@ Event = (
     | LogEvent
     | DeviceStartedEvent
     | DeviceFinishedEvent
+    | SetupSummaryEvent
     | RunFinishedEvent
 )
 
@@ -89,3 +102,5 @@ class DeviceState(BaseModel):
     current_stage: Stage | None = None
     stages: dict[str, StageStatus] = {}
     skip_stages: list[Stage] = []
+    elapsed_seconds: float | None = None
+    failure_reason: str | None = None

@@ -12,6 +12,33 @@
         <div id="health" class="health">checking...</div>
     </header>
 
+    <div id="wifi-banner" class="banner banner-bad" hidden>
+        <span id="wifi-banner-text">WiFi credentials missing — flashes will fail.</span>
+        <button id="open-settings-btn" class="btn btn-small">Configure</button>
+    </div>
+
+    <section id="settings-panel" class="settings-panel" hidden>
+        <div class="settings-row">
+            <label>
+                WiFi SSID
+                <input type="text" id="setting-ssid" placeholder="MyNetwork" />
+            </label>
+            <label>
+                WiFi password
+                <input type="password" id="setting-wifi-pw" placeholder="••••••••" />
+            </label>
+            <label>
+                Default device password (optional)
+                <input type="password" id="setting-device-pw" placeholder="••••••••" />
+            </label>
+        </div>
+        <div class="settings-row">
+            <button id="save-settings-btn" class="btn btn-primary">Save to .env</button>
+            <button id="close-settings-btn" class="btn">Close</button>
+            <span id="settings-status" class="folder-info"></span>
+        </div>
+    </section>
+
     <section class="controls">
         <div class="control-row">
             <label class="file-picker">
@@ -41,6 +68,7 @@
                 <div class="device-title">
                     <span class="device-serial"></span>
                     <span class="status-badge" data-status="idle">idle</span>
+                    <span class="elapsed" hidden></span>
                 </div>
                 <button class="btn btn-small retry-btn" hidden>Retry</button>
             </div>
@@ -51,6 +79,13 @@
             <div class="skip-row">
                 <label><input type="checkbox" class="skip-toggle" data-stage="change_password" /> skip password</label>
                 <label><input type="checkbox" class="skip-toggle" data-stage="push_properties" /> skip properties</label>
+            </div>
+            <div class="failure-reason" hidden></div>
+            <div class="summary-panel" hidden>
+                <div class="summary-header">Device setup summary</div>
+                <div class="summary-row"><span class="label">Status</span><span class="summary-status"></span></div>
+                <div class="summary-row"><span class="label">Time</span><span class="summary-time"></span></div>
+                <ul class="summary-errors"></ul>
             </div>
             <pre class="log-panel"></pre>
         </div>

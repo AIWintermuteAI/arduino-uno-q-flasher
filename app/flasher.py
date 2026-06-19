@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -19,9 +20,11 @@ from .events import (
     Event,
     LogEvent,
     OPTIONAL_STAGES,
+    SetupSummaryEvent,
     Stage,
     StageEvent,
 )
+from .parser import SetupOutputParser
 
 EmitFn = Callable[[Event], Awaitable[None]]
 
@@ -86,6 +89,9 @@ async def flash_device(
     Returns True on success, False on failure. Errors in optional stages do not
     fail the run; errors in required stages do.
     """
+    start_time = time.monotonic()
+    parser = SetupOutputParser()
+
     await emit(DeviceStartedEvent(device=serial))
 
     async def log(line: str, stream: str = "info", stage: Stage | None = None) -> None:
@@ -96,6 +102,24 @@ async def flash_device(
             await emit(LogEvent(device=serial, stage=stage, line=line, stream=stream))  # type: ignore[arg-type]
 
         return cb
+
+    async def line_cb_run_setup(line: str, stream: str) -> None:
+        # Feed the parser AND forward the line as a normal log event.
+        parser.feed(line)
+        await emit(LogEvent(device=serial, stage="run_setup", line=line, stream=stream))  # type: ignore[arg-type]
+
+    async def fail(reason: str | None = None) -> bool:
+        await _emit_summary(serial, parser, emit)
+        result, hint = parser.finish()
+        await emit(
+            DeviceFinishedEvent(
+                device=serial,
+                result="failed",
+                elapsed_seconds=round(time.monotonic() - start_time, 1),
+                failure_reason=(hint.message if hint else reason),
+            )
+        )
+        return False
 
     async def run_stage(
         stage: Stage,
@@ -134,7 +158,7 @@ async def flash_device(
         return rc == 0
 
     if not await run_stage("push_app", stage_push_app, required=True):
-        return await _fail(serial, emit)
+        return await fail("Failed to push app folder.")
 
     # 2. push setup script
     async def stage_push_script() -> bool:
@@ -143,7 +167,7 @@ async def flash_device(
         return rc == 0
 
     if not await run_stage("push_setup_script", stage_push_script, required=True):
-        return await _fail(serial, emit)
+        return await fail("Failed to push setup script.")
 
     # 3. push .env (skip silently if not present)
     async def stage_push_env() -> bool:
@@ -155,7 +179,7 @@ async def flash_device(
         return rc == 0
 
     if not await run_stage("push_env", stage_push_env, required=True):
-        return await _fail(serial, emit)
+        return await fail("Failed to push .env.")
 
     # 4. chmod the setup script
     async def stage_chmod() -> bool:
@@ -166,7 +190,7 @@ async def flash_device(
         return rc == 0
 
     if not await run_stage("chmod_script", stage_chmod, required=True):
-        return await _fail(serial, emit)
+        return await fail("Failed to chmod setup script.")
 
     # 5. change password (optional, can be skipped)
     async def stage_password() -> bool:
@@ -175,20 +199,8 @@ async def flash_device(
     # password failure does NOT fail the device, matching the bash script
     await run_stage("change_password", stage_password, required=False)
 
-    # 6. run remote setup script
-    async def stage_run_setup() -> bool:
-        cb = await line_cb_for("run_setup")
-        rc, _ = await adb.shell(
-            serial,
-            f"source /etc/profile; bash {REMOTE_SETUP_SCRIPT_PATH}",
-            cb,
-        )
-        return rc == 0
-
-    if not await run_stage("run_setup", stage_run_setup, required=True):
-        return await _fail(serial, emit)
-
-    # 7. push properties (optional)
+    # 6. push properties (optional) — must happen BEFORE run_setup so the on-device
+    # setup wizard sees the "done" markers and doesn't block.
     async def stage_push_properties() -> bool:
         props = ctx.properties_file
         if props is None:
@@ -203,13 +215,59 @@ async def flash_device(
 
     await run_stage("push_properties", stage_push_properties, required=False)
 
-    await emit(DeviceFinishedEvent(device=serial, result="success"))
+    # 7. run remote setup script (parsed for summary + failure hints)
+    async def stage_run_setup() -> bool:
+        rc, _ = await adb.shell(
+            serial,
+            f"source /etc/profile; bash {REMOTE_SETUP_SCRIPT_PATH}",
+            line_cb_run_setup,
+        )
+        return rc == 0
+
+    if not await run_stage("run_setup", stage_run_setup, required=True):
+        return await fail("Remote setup script failed.")
+
+    # If the on-device summary itself reported FAILED, treat the device as failed
+    # even though adb's exit code was 0 (the script's `trap print_summary EXIT`
+    # always prints the summary and then exits 0 if `exit 1` already ran above,
+    # but on success the box says SUCCESS).
+    await _emit_summary(serial, parser, emit)
+    result, hint = parser.finish()
+    if result is not None and result.status == "FAILED":
+        await emit(
+            DeviceFinishedEvent(
+                device=serial,
+                result="failed",
+                elapsed_seconds=round(time.monotonic() - start_time, 1),
+                failure_reason=(hint.message if hint else "Device-side setup reported FAILED."),
+            )
+        )
+        return False
+
+    await emit(
+        DeviceFinishedEvent(
+            device=serial,
+            result="success",
+            elapsed_seconds=round(time.monotonic() - start_time, 1),
+        )
+    )
     return True
 
 
-async def _fail(serial: str, emit: EmitFn) -> bool:
-    await emit(DeviceFinishedEvent(device=serial, result="failed"))
-    return False
+async def _emit_summary(serial: str, parser: SetupOutputParser, emit: EmitFn) -> None:
+    """Emit a SetupSummaryEvent if the parser captured one. Idempotent-ish: only
+    called from terminal paths."""
+    result, _ = parser.finish()
+    if result is None or result.status is None:
+        return
+    await emit(
+        SetupSummaryEvent(
+            device=serial,
+            status=result.status,  # type: ignore[arg-type]
+            elapsed_seconds=result.elapsed_seconds,
+            errors=list(result.errors),
+        )
+    )
 
 
 async def _change_password(

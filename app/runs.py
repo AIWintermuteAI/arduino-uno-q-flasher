@@ -125,6 +125,8 @@ class Registry:
                 return
             d.status = event.result  # type: ignore[assignment]
             d.current_stage = None
+            d.elapsed_seconds = event.elapsed_seconds
+            d.failure_reason = event.failure_reason
 
     # ---------- run lifecycle ----------
 

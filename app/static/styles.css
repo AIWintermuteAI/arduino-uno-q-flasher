@@ -33,6 +33,57 @@ body {
 .health.ok { color: #5fd97a; }
 .health.bad { color: #ff6a6a; }
 
+.banner {
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid #2a2f37;
+    font-size: 13px;
+}
+
+.banner-bad {
+    background: #3a1212;
+    color: #fca5a5;
+    border-bottom-color: #5a1a1a;
+}
+
+.settings-panel {
+    background: #1a1f26;
+    border-bottom: 1px solid #2a2f37;
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.settings-row {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.settings-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    color: #8a93a0;
+}
+
+.settings-row input[type="text"],
+.settings-row input[type="password"] {
+    background: #0b0e12;
+    border: 1px solid #2a2f37;
+    color: #e6e8eb;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    min-width: 200px;
+}
+
 .controls {
     padding: 16px 20px;
     background: #161a20;
@@ -207,3 +258,60 @@ body {
 .log-panel .log-info  { color: #93c5fd; }
 .log-panel .log-err   { color: #fca5a5; }
 .log-panel .log-stage { color: #d8b4fe; font-weight: 600; }
+
+.elapsed {
+    font-size: 11px;
+    color: #8a93a0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.failure-reason {
+    background: #3a1212;
+    color: #fca5a5;
+    border: 1px solid #5a1a1a;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
+.summary-panel {
+    background: #0b0e12;
+    border: 1px solid #2a2f37;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #c9d1d9;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.summary-header {
+    font-weight: 600;
+    color: #d8b4fe;
+    margin-bottom: 2px;
+}
+
+.summary-row {
+    display: flex;
+    gap: 8px;
+}
+
+.summary-row .label {
+    color: #8a93a0;
+    width: 56px;
+}
+
+.summary-status[data-status="SUCCESS"] { color: #86efac; }
+.summary-status[data-status="FAILED"]  { color: #fca5a5; }
+
+.summary-errors {
+    margin: 4px 0 0 16px;
+    padding: 0;
+    color: #fca5a5;
+}
+
+.summary-errors li {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+}

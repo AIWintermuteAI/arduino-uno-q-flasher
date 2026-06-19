@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import adb
+from .env_file import MANAGED_KEYS, read_env, write_env
 from .events import OPTIONAL_STAGES, Stage, StartRunRequest
 from .flasher import FlasherContext, SETUP_SCRIPT_NAME
 from .runs import Registry
@@ -100,7 +101,49 @@ async def health() -> dict:
         "adb_path": adb_bin,
         "adb_error": adb_error,
         "password_configured": bool(os.environ.get("UNOQ_DEFAULT_PASSWORD")),
+        "wifi_ssid_configured": bool(os.environ.get("UNOQ_WIFI_SSID")),
+        "wifi_password_configured": bool(os.environ.get("UNOQ_WIFI_PASSWORD")),
     }
+
+
+class SettingsBody(BaseModel):
+    UNOQ_WIFI_SSID: str | None = None
+    UNOQ_WIFI_PASSWORD: str | None = None
+    UNOQ_DEFAULT_PASSWORD: str | None = None
+
+
+@app.get("/api/settings")
+async def get_settings() -> dict:
+    """Return current managed-key values. Passwords are masked to a bool."""
+    env_path = PROJECT_ROOT / ".env"
+    on_disk = read_env(env_path)
+    return {
+        "UNOQ_WIFI_SSID": on_disk.get("UNOQ_WIFI_SSID")
+        or os.environ.get("UNOQ_WIFI_SSID")
+        or "",
+        "UNOQ_WIFI_PASSWORD_set": bool(
+            on_disk.get("UNOQ_WIFI_PASSWORD") or os.environ.get("UNOQ_WIFI_PASSWORD")
+        ),
+        "UNOQ_DEFAULT_PASSWORD_set": bool(
+            on_disk.get("UNOQ_DEFAULT_PASSWORD")
+            or os.environ.get("UNOQ_DEFAULT_PASSWORD")
+        ),
+    }
+
+
+@app.post("/api/settings")
+async def update_settings(body: SettingsBody) -> dict:
+    """Write any provided keys into the project .env (preserves other keys)."""
+    updates: dict[str, str] = {}
+    for key in MANAGED_KEYS:
+        val = getattr(body, key, None)
+        if val is not None:  # empty string is a valid "clear"
+            updates[key] = val
+    if not updates:
+        raise HTTPException(status_code=400, detail="no settings provided")
+    env_path = PROJECT_ROOT / ".env"
+    write_env(env_path, updates)
+    return {"ok": True, "updated": list(updates.keys())}
 
 
 @app.get("/api/devices")

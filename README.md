@@ -59,5 +59,6 @@ The web app runs the same 7-step workflow as the original bash script:
 4. `chmod_script` — make the setup script executable
 5. `change_password` — set the arduino user's password from `UNOQ_DEFAULT_PASSWORD`
    (skippable; handles the "already-changed" case gracefully)
-6. `run_setup` — execute the remote setup script
-7. `push_properties` — push `properties.msgpack` (skippable; skipped if absent)
+6. `push_properties` — push `properties.msgpack` so on-device setup-wizard markers
+   are in place before setup runs (skippable; skipped if absent)
+7. `run_setup` — execute the remote setup script (WiFi, DNS, system update)
