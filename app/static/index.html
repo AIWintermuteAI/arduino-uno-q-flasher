@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arduino UNO Q Flasher</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+    <header class="topbar">
+        <h1>Arduino UNO Q Flasher</h1>
+        <div id="health" class="health">checking...</div>
+    </header>
+
+    <section class="controls">
+        <div class="control-row">
+            <label class="file-picker">
+                <input type="file" id="folder-input" webkitdirectory directory multiple />
+                <span class="btn">Choose app folder</span>
+            </label>
+            <span id="folder-info" class="folder-info">no folder selected</span>
+        </div>
+
+        <div class="control-row">
+            <button id="refresh-btn" class="btn">Refresh devices</button>
+            <span id="device-count" class="folder-info">0 devices detected</span>
+        </div>
+
+        <div class="control-row">
+            <button id="start-btn" class="btn btn-primary" disabled>Start all</button>
+            <button id="retry-failed-btn" class="btn" disabled>Retry failed</button>
+            <span id="run-status" class="folder-info"></span>
+        </div>
+    </section>
+
+    <main id="devices-grid" class="devices-grid"></main>
+
+    <template id="device-card-template">
+        <div class="device-card" data-serial="">
+            <div class="device-header">
+                <div class="device-title">
+                    <span class="device-serial"></span>
+                    <span class="status-badge" data-status="idle">idle</span>
+                </div>
+                <button class="btn btn-small retry-btn" hidden>Retry</button>
+            </div>
+            <div class="progress-row">
+                <div class="progress-bar"><div class="progress-fill"></div></div>
+                <span class="current-stage">—</span>
+            </div>
+            <div class="skip-row">
+                <label><input type="checkbox" class="skip-toggle" data-stage="change_password" /> skip password</label>
+                <label><input type="checkbox" class="skip-toggle" data-stage="push_properties" /> skip properties</label>
+            </div>
+            <pre class="log-panel"></pre>
+        </div>
+    </template>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
