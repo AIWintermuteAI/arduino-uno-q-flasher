@@ -134,9 +134,14 @@ done
 log "Internet connectivity confirmed."
 
 # ── App brick permissions ─────────────────────────────────────────────────────
-log "Installing app brick (setting permissions for models)..."
-chmod +x /home/arduino/ArduinoApps/*/*.eim \
-    || add_error "chmod failed on an eim file"
+log "Checking for app bricks (.eim models)..."
+EIM_FILES=$(find /home/arduino/ArduinoApps -name "*.eim" 2>/dev/null)
+if [ -n "$EIM_FILES" ]; then
+    log "Found EIM models. Setting permissions..."
+    chmod +x $EIM_FILES || add_error "chmod failed on eim files"
+else
+    log "No .eim models found, skipping permission setup."
+fi
 
 # ── System update ─────────────────────────────────────────────────────────────
 log "Running arduino-app-cli system update..."

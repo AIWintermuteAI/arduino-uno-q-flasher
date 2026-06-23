@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Arduino UNO Q Flasher</title>
+    <title>Arduino UNO Q Flasher - made by Edge Impulse</title>
     <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -50,13 +50,21 @@
         </div>
 
         <div class="control-row">
+            <label class="file-picker">
+                <input type="file" id="eim-input" accept=".eim" />
+                <span class="btn">Upload .eim model</span>
+            </label>
+            <span id="eim-info" class="folder-info">no .eim selected</span>
+        </div>
+
+        <div class="control-row">
             <button id="refresh-btn" class="btn">Refresh devices</button>
             <span id="device-count" class="folder-info">0 devices detected</span>
         </div>
 
         <div class="control-row">
             <button id="start-btn" class="btn btn-primary" disabled>Start all</button>
-            <button id="retry-failed-btn" class="btn" disabled>Retry failed</button>
+            <button id="retry-failed-btn" class="btn" disabled>Retry failed</btn>
             <span id="run-status" class="folder-info"></span>
         </div>
     </section>
