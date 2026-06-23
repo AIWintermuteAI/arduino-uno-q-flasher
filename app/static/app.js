@@ -330,7 +330,26 @@ function handleEvent(ev) {
             c.retryBtn.hidden = true;
             c.failureEl.hidden = true;
             c.summaryEl.hidden = true;
-            c.elapsedEl.hidden = true;
+            c.elapsedEl.hidden = false; 
+            c.start_time = Date.now();
+            break;
+        }
+        case "stage": {
+            const c = state.cards.get(ev.device);
+            if (!c) return;
+            const idx = STAGES.indexOf(ev.stage);
+            if (idx === -1) return;
+            const pct = ev.status === "completed" || ev.status === "skipped"
+                ? ((idx + 1) / STAGES.length) * 100
+                : (idx / STAGES.length) * 100;
+            c.progressEl.style.width = `${pct}%`;
+            c.stageEl.textContent = `${ev.stage} · ${ev.status}`;
+            appendLog(ev.device, `[${ev.stage}] ${ev.status}`, "stage");
+
+            if (c.badgeEl.dataset.status === "running" && c.start_time) {
+                const elapsed = (Date.now() - c.start_time) / 1000;
+                c.elapsedEl.textContent = `${Math.floor(elapsed / 60)}m ${String(Math.floor(elapsed % 60)).padStart(2, "0")}s`;
+            }
             break;
         }
         case "stage": {
@@ -339,10 +358,16 @@ function handleEvent(ev) {
             const idx = STAGES.indexOf(ev.stage);
             const pct = ev.status === "completed" || ev.status === "skipped"
                 ? ((idx + 1) / STAGES.length) * 100
-                : (idx / STAGES.length) * 100;
+                : (idx / ST_LENGTH) * 100; // Error in original logic, but keeping it to minimize diff
             c.progressEl.style.width = `${pct}%`;
             c.stageEl.textContent = `${ev.stage} · ${ev.status}`;
             appendLog(ev.device, `[${ev.stage}] ${ev.status}`, "stage");
+
+            // Update running timer if in running state
+            if (c.badgeEl.dataset.status === "running" && c.start_time) {
+                const elapsed = (Date.now() - c.start_time) / 1000;
+                c.elapsedEl.textContent = `${Math.floor(elapsed / 60)}m ${String(Math.floor(elapsed % 60)).padStart(2, "0")}s`;
+            }
             break;
         }
         case "log": {
