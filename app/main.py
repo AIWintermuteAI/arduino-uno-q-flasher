@@ -1,13 +1,15 @@
 """FastAPI app: HTTP routes + WebSocket endpoint.
 
 Routes:
-  GET  /                       -> serves index.html
-  GET  /api/health             -> simple liveness + adb status
-  GET  /api/devices            -> list online devices via adb
-  POST /api/upload             -> receive folder upload (multipart, many files)
-  POST /api/runs               -> start a new run for selected devices
-  POST /api/runs/{id}/devices/{serial}/retry  -> retry a device
-  WS   /ws/runs/{id}           -> stream events for a run
+  GET  /                                    -> serves index.html
+  GET  /api/health                          -> simple liveness + adb status
+  GET  /api/devices                         -> list online devices via adb
+  POST /api/upload                          -> receive folder upload (multipart, many files)
+  POST /api/runs                            -> start a new run for selected devices
+  POST /api/runs/{id}/devices/{serial}/retry -> retry a device
+  WS   /ws/runs/{id}                        -> stream events for a run
+  POST /api/flash-runs                      -> start an image flash run (N boards, EDL mode)
+  WS   /ws/flash-runs/{id}                  -> stream flash run events
 """
 from __future__ import annotations
 
@@ -34,6 +36,7 @@ from . import adb
 from .env_file import MANAGED_KEYS, read_env, write_env
 from .events import OPTIONAL_STAGES, Stage, StartRunRequest
 from .flasher import FlasherContext, SETUP_SCRIPT_NAME
+from .image_flasher import flasher_cli_available
 from .runs import Registry
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -100,6 +103,7 @@ async def health() -> dict:
         "adb_available": adb_ok,
         "adb_path": adb_bin,
         "adb_error": adb_error,
+        "flasher_cli_available": flasher_cli_available(),
         "password_configured": bool(os.environ.get("UNOQ_DEFAULT_PASSWORD")),
         "wifi_ssid_configured": bool(os.environ.get("UNOQ_WIFI_SSID")),
         "wifi_password_configured": bool(os.environ.get("UNOQ_WIFI_PASSWORD")),
@@ -300,3 +304,53 @@ async def ws_run(ws: WebSocket, run_id: str) -> None:
 def _sanitize(name: str) -> str:
     safe = "".join(c if c.isalnum() or c in "-._" else "_" for c in name)
     return safe or "app"
+
+
+# ----- Image flash endpoints -----
+
+
+class StartFlashRunRequest(BaseModel):
+    board_count: int
+
+
+@app.post("/api/flash-runs")
+async def start_flash_run(req: StartFlashRunRequest) -> dict:
+    if req.board_count < 1 or req.board_count > 20:
+        raise HTTPException(status_code=400, detail="board_count must be between 1 and 20")
+    if not flasher_cli_available():
+        raise HTTPException(
+            status_code=400,
+            detail="arduino-flasher-cli not found on PATH — install it first.",
+        )
+    run = registry.create_flash_run(req.board_count)
+    asyncio.create_task(registry.run_flash(run))
+    return {"flash_run_id": run.flash_run_id}
+
+
+@app.websocket("/ws/flash-runs/{flash_run_id}")
+async def ws_flash_run(ws: WebSocket, flash_run_id: str) -> None:
+    await ws.accept()
+    run = registry.get_flash_run(flash_run_id)
+    if run is None:
+        await ws.send_json({"type": "error", "message": "flash run not found"})
+        await ws.close()
+        return
+
+    q = registry.subscribe_flash(run)
+    try:
+        while True:
+            try:
+                ev = await asyncio.wait_for(q.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                if run.finished.is_set() and q.empty():
+                    break
+                continue
+            await ws.send_json(ev.model_dump())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        registry.unsubscribe_flash(run, q)
+        try:
+            await ws.close()
+        except Exception:  # noqa: BLE001
+            pass

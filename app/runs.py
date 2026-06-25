@@ -18,6 +18,11 @@ from .events import (
     DeviceFinishedEvent,
     DeviceState,
     Event,
+    FlashEvent,
+    FlashRunFinishedEvent,
+    FlashSlotFinishedEvent,
+    FlashSlotStartedEvent,
+    FlashSlotState,
     LogEvent,
     RunFinishedEvent,
     Stage,
@@ -51,6 +56,7 @@ class Registry:
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
         self._uploads: dict[str, Upload] = {}
         self._runs: dict[str, Run] = {}
+        self._flash_runs: dict[str, FlashRun] = {}
 
     # ---------- uploads ----------
 
@@ -217,3 +223,82 @@ class Registry:
 
         t = asyncio.create_task(run_one())
         run._tasks[serial] = t
+
+
+@dataclass
+class FlashRun:
+    flash_run_id: str
+    board_count: int
+    slots: dict[int, FlashSlotState] = field(default_factory=dict)
+    subscribers: list[asyncio.Queue[FlashEvent]] = field(default_factory=list)
+    event_log: list[FlashEvent] = field(default_factory=list)
+    finished: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+def _apply_to_flash_slot_state(run: FlashRun, event: FlashEvent) -> None:
+    if isinstance(event, FlashSlotStartedEvent):
+        s = run.slots.get(event.slot)
+        if s:
+            s.status = "running"
+    elif isinstance(event, FlashSlotFinishedEvent):
+        s = run.slots.get(event.slot)
+        if s:
+            s.status = event.result  # type: ignore[assignment]
+
+
+def _add_flash_run_methods(cls: type) -> type:
+    """Attach flash-run methods to Registry at module load time."""
+
+    def create_flash_run(self, board_count: int) -> FlashRun:
+        flash_run_id = uuid.uuid4().hex[:12]
+        run = FlashRun(flash_run_id=flash_run_id, board_count=board_count)
+        for i in range(board_count):
+            run.slots[i] = FlashSlotState(slot=i)
+        self._flash_runs[flash_run_id] = run
+        return run
+
+    def get_flash_run(self, flash_run_id: str) -> FlashRun | None:
+        return self._flash_runs.get(flash_run_id)
+
+    async def emit_flash(self, run: FlashRun, event: FlashEvent) -> None:
+        run.event_log.append(event)
+        _apply_to_flash_slot_state(run, event)
+        for q in list(run.subscribers):
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                pass
+
+    def subscribe_flash(self, run: FlashRun) -> asyncio.Queue[FlashEvent]:
+        q: asyncio.Queue[FlashEvent] = asyncio.Queue(maxsize=10_000)
+        for ev in run.event_log:
+            try:
+                q.put_nowait(ev)
+            except asyncio.QueueFull:
+                break
+        run.subscribers.append(q)
+        return q
+
+    def unsubscribe_flash(self, run: FlashRun, q: asyncio.Queue[FlashEvent]) -> None:
+        if q in run.subscribers:
+            run.subscribers.remove(q)
+
+    async def run_flash(self, run: FlashRun) -> None:
+        from .image_flasher import flash_boards
+        success_count, total = await flash_boards(
+            run.board_count,
+            lambda ev: self.emit_flash(run, ev),
+        )
+        await self.emit_flash(run, FlashRunFinishedEvent(success_count=success_count, total=total))
+        run.finished.set()
+
+    cls.create_flash_run = create_flash_run
+    cls.get_flash_run = get_flash_run
+    cls.emit_flash = emit_flash
+    cls.subscribe_flash = subscribe_flash
+    cls.unsubscribe_flash = unsubscribe_flash
+    cls.run_flash = run_flash
+    return cls
+
+
+_add_flash_run_methods(Registry)

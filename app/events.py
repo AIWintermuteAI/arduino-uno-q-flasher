@@ -104,3 +104,46 @@ class DeviceState(BaseModel):
     skip_stages: list[Stage] = []
     elapsed_seconds: float | None = None
     failure_reason: str | None = None
+
+
+# ── Image flash events ────────────────────────────────────────────────────────
+
+FlashSlotStatus = Literal["idle", "running", "success", "failed"]
+
+
+class FlashSlotStartedEvent(BaseModel):
+    type: Literal["flash_slot_started"] = "flash_slot_started"
+    slot: int   # 0-based
+    total: int
+
+
+class FlashLogEvent(BaseModel):
+    type: Literal["flash_log"] = "flash_log"
+    slot: int
+    line: str
+    stream: Literal["stdout", "stderr", "info"] = "info"
+
+
+class FlashSlotFinishedEvent(BaseModel):
+    type: Literal["flash_slot_finished"] = "flash_slot_finished"
+    slot: int
+    result: Literal["success", "failed"]
+
+
+class FlashRunFinishedEvent(BaseModel):
+    type: Literal["flash_run_finished"] = "flash_run_finished"
+    success_count: int
+    total: int
+
+
+FlashEvent = (
+    FlashSlotStartedEvent
+    | FlashLogEvent
+    | FlashSlotFinishedEvent
+    | FlashRunFinishedEvent
+)
+
+
+class FlashSlotState(BaseModel):
+    slot: int
+    status: FlashSlotStatus = "idle"
