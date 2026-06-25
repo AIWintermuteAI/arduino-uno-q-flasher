@@ -13,6 +13,19 @@ add_error() {
     log "ERROR: $1"
 }
 
+# ── LED status indicator ──────────────────────────────────────────────────────
+set_status_led() {
+    # $1 = "green" | "red"
+    local R=0 G=0 B=0
+    if [ "$1" = "green" ]; then G=1; else R=1; fi
+    for COLOR in red green blue; do
+        echo none > /sys/class/leds/${COLOR}:user/trigger 2>/dev/null || true
+    done
+    echo $R > /sys/class/leds/red:user/brightness   2>/dev/null || true
+    echo $G > /sys/class/leds/green:user/brightness 2>/dev/null || true
+    echo $B > /sys/class/leds/blue:user/brightness  2>/dev/null || true
+}
+
 print_summary() {
     END_TIME=$(date +%s)
     ELAPSED=$((END_TIME - START_TIME))
@@ -25,8 +38,10 @@ print_summary() {
     printf "║  Total time : %02dm %02ds%-32s║\n" "$MINS" "$SECS" ""
     if [ ${#ERRORS[@]} -eq 0 ]; then
         echo "║  Status     : SUCCESS                            ║"
+        set_status_led green
     else
         printf "║  Status     : FAILED (%d error(s))%-17s║\n" "${#ERRORS[@]}" ""
+        set_status_led red
         echo "╠══════════════════════════════════════════════════╣"
         echo "║  Errors:                                         ║"
         for ERR in "${ERRORS[@]}"; do
