@@ -155,6 +155,30 @@ async def devices() -> dict:
     return {"devices": [{"serial": d.serial, "state": d.state} for d in ds]}
 
 
+# Blink the red user LED ~3s to physically identify the board on a bench full
+# of UNO Qs. Uses the same `echo X | tee` form as on-device docs; runs as the
+# `arduino` user via adb shell.
+IDENTIFY_BLINK_CMD = (
+    "for i in 1 2 3 4 5; do "
+    "echo 1 | tee /sys/class/leds/red:user/brightness >/dev/null; sleep 0.3; "
+    "echo 0 | tee /sys/class/leds/red:user/brightness >/dev/null; sleep 0.3; "
+    "done"
+)
+
+
+@app.post("/api/devices/{serial}/identify")
+async def identify_device(serial: str) -> dict:
+    try:
+        rc, out = await adb.shell(serial, IDENTIFY_BLINK_CMD)
+    except adb.AdbNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    if rc != 0:
+        raise HTTPException(
+            status_code=502, detail=f"adb shell exited {rc}: {out[:200]}"
+        )
+    return {"ok": True}
+
+
 @app.post("/api/upload")
 async def upload(
     folder_name: str = Form(...),
@@ -198,11 +222,25 @@ async def upload(
                 out.write(chunk)
 
     registry.register_upload(upload_id, folder_root, folder_name)
-    file_count = sum(1 for _ in folder_root.rglob("*") if _.is_file())
+    file_count = 0
+    eim_files: list[dict] = []
+    for p in folder_root.rglob("*"):
+        if not p.is_file():
+            continue
+        file_count += 1
+        if p.suffix.lower() == ".eim":
+            eim_files.append(
+                {
+                    "path": p.relative_to(folder_root).as_posix(),
+                    "size_bytes": p.stat().st_size,
+                }
+            )
+    eim_files.sort(key=lambda e: e["path"])
     return {
         "upload_id": upload_id,
         "folder_name": folder_name,
         "file_count": file_count,
+        "eim_files": eim_files,
     }
 
 
@@ -228,6 +266,7 @@ async def start_run(req: StartRunRequest) -> dict:
         env_file=env_file if env_file.is_file() else None,
         unoq_default_password=os.environ.get("UNOQ_DEFAULT_PASSWORD"),
         project_root=PROJECT_ROOT,
+        post_update_cmd=(req.post_update_cmd or "").strip() or None,
     )
     run = registry.create_run(ctx, upload)
 

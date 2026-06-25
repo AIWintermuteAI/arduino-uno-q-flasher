@@ -46,6 +46,22 @@
                 <span class="btn">Choose app folder</span>
             </label>
             <span id="folder-info" class="folder-info">no folder selected</span>
+            <div id="eim-info" class="eim-info" hidden>
+                <div class="eim-info-header">.eim model files in this folder:</div>
+                <ul id="eim-list"></ul>
+            </div>
+        </div>
+
+        <div class="control-row">
+            <label class="post-update-label">
+                Post-update command (runs on each device after setup)
+                <input
+                    type="text"
+                    id="post-update-cmd"
+                    placeholder="leave empty to skip"
+                    value="app start examples:real-time-accelerometer"
+                />
+            </label>
         </div>
 
         <div class="control-row">
@@ -70,7 +86,10 @@
                     <span class="status-badge" data-status="idle">idle</span>
                     <span class="elapsed" hidden></span>
                 </div>
-                <button class="btn btn-small retry-btn" hidden>Retry</button>
+                <div class="device-actions">
+                    <button class="btn btn-small identify-btn" title="Blink the red LED to find this board on the bench">Identify</button>
+                    <button class="btn btn-small retry-btn" hidden>Retry</button>
+                </div>
             </div>
             <div class="progress-row">
                 <div class="progress-bar"><div class="progress-fill"></div></div>
@@ -79,6 +98,7 @@
             <div class="skip-row">
                 <label><input type="checkbox" class="skip-toggle" data-stage="change_password" /> skip password</label>
                 <label><input type="checkbox" class="skip-toggle" data-stage="push_properties" /> skip properties</label>
+                <label><input type="checkbox" class="skip-toggle" data-stage="post_update" /> skip post-update</label>
             </div>
             <div class="failure-reason" hidden></div>
             <div class="summary-panel" hidden>

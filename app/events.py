@@ -12,6 +12,7 @@ Stage = Literal[
     "change_password",
     "push_properties",
     "run_setup",
+    "post_update",
 ]
 
 ALL_STAGES: tuple[Stage, ...] = (
@@ -22,10 +23,13 @@ ALL_STAGES: tuple[Stage, ...] = (
     "change_password",
     "push_properties",
     "run_setup",
+    "post_update",
 )
 
 # Stages the user can toggle off from the UI. The others are required.
-OPTIONAL_STAGES: frozenset[Stage] = frozenset({"change_password", "push_properties"})
+OPTIONAL_STAGES: frozenset[Stage] = frozenset(
+    {"change_password", "push_properties", "post_update"}
+)
 
 DeviceStatus = Literal["idle", "running", "success", "failed", "skipped"]
 StageStatus = Literal["started", "completed", "failed", "skipped"]
@@ -94,6 +98,7 @@ class DeviceConfig(BaseModel):
 class StartRunRequest(BaseModel):
     upload_id: str
     devices: list[DeviceConfig]
+    post_update_cmd: str | None = None
 
 
 class DeviceState(BaseModel):

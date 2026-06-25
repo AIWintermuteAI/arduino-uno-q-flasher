@@ -9,7 +9,10 @@ const STAGES = [
     "change_password",
     "push_properties",
     "run_setup",
+    "post_update",
 ];
+
+const DEVICE_POLL_MS = 5000;
 
 const state = {
     upload: null,        // { upload_id, folder_name, file_count }
@@ -30,6 +33,7 @@ async function init() {
     await refreshHealth();
     await refreshDevices();
     wireControls();
+    setInterval(refreshDevices, DEVICE_POLL_MS);
 }
 
 async function refreshHealth() {
@@ -92,11 +96,14 @@ async function refreshDevices() {
 
 function renderDeviceGrid() {
     const grid = $("#devices-grid");
-    grid.innerHTML = "";
-    state.cards.clear();
     const tpl = $("#device-card-template");
+    const seen = new Set();
+    const runActive = state.runId !== null;
 
     for (const d of state.devices) {
+        seen.add(d.serial);
+        if (state.cards.has(d.serial)) continue;  // keep existing card + logs
+
         const node = tpl.content.firstElementChild.cloneNode(true);
         node.dataset.serial = d.serial;
         node.querySelector(".device-serial").textContent = d.serial;
@@ -106,18 +113,32 @@ function renderDeviceGrid() {
         const stageEl = node.querySelector(".current-stage");
         const logEl = node.querySelector(".log-panel");
         const retryBtn = node.querySelector(".retry-btn");
+        const identifyBtn = node.querySelector(".identify-btn");
         const elapsedEl = node.querySelector(".elapsed");
         const failureEl = node.querySelector(".failure-reason");
         const summaryEl = node.querySelector(".summary-panel");
         const skipInputs = Array.from(node.querySelectorAll(".skip-toggle"));
 
         retryBtn.addEventListener("click", () => retryDevice(d.serial));
+        identifyBtn.addEventListener("click", () => identifyDevice(d.serial));
 
         grid.appendChild(node);
         state.cards.set(d.serial, {
-            card: node, badgeEl, progressEl, stageEl, logEl, retryBtn,
+            card: node, badgeEl, progressEl, stageEl, logEl, retryBtn, identifyBtn,
             elapsedEl, failureEl, summaryEl, skipInputs,
         });
+    }
+
+    // Remove cards for devices that disappeared — but only when idle. Mid-run
+    // we keep them visible (with their logs) even if adb briefly drops them.
+    if (!runActive) {
+        for (const serial of Array.from(state.cards.keys())) {
+            if (!seen.has(serial)) {
+                const c = state.cards.get(serial);
+                c.card.remove();
+                state.cards.delete(serial);
+            }
+        }
     }
 }
 
@@ -191,6 +212,7 @@ async function onFolderPicked(e) {
     state.folderFiles = files;
     const rootName = (files[0].webkitRelativePath || files[0].name).split("/")[0];
     $("#folder-info").textContent = `${rootName} — uploading ${files.length} files…`;
+    renderEimList(null);  // hide while uploading
 
     const fd = new FormData();
     fd.append("folder_name", rootName);
@@ -209,10 +231,47 @@ async function onFolderPicked(e) {
         state.upload = j;
         const mb = approxSize(files);
         $("#folder-info").textContent = `${j.folder_name} · ${j.file_count} files · ${mb}`;
+        renderEimList(j.eim_files || []);
         updateStartButton();
     } catch (err) {
         $("#folder-info").textContent = `upload error: ${err}`;
     }
+}
+
+function renderEimList(eimFiles) {
+    const wrap = $("#eim-info");
+    const ul = $("#eim-list");
+    ul.innerHTML = "";
+    if (eimFiles == null) {
+        wrap.hidden = true;
+        return;
+    }
+    wrap.hidden = false;
+    if (eimFiles.length === 0) {
+        const li = document.createElement("li");
+        li.className = "eim-empty";
+        li.textContent = "no .eim files found in this folder";
+        ul.appendChild(li);
+        return;
+    }
+    for (const e of eimFiles) {
+        const li = document.createElement("li");
+        const name = document.createElement("span");
+        name.className = "eim-name";
+        name.textContent = e.path;
+        const size = document.createElement("span");
+        size.className = "eim-size";
+        size.textContent = formatBytes(e.size_bytes);
+        li.appendChild(name);
+        li.appendChild(size);
+        ul.appendChild(li);
+    }
+}
+
+function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function approxSize(files) {
@@ -243,11 +302,16 @@ async function startRun() {
         const skip = collectSkip(d.serial);
         return { serial: d.serial, skip_stages: skip };
     });
+    const postUpdateCmd = ($("#post-update-cmd").value || "").trim();
     resetAllCards();
     const r = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upload_id: state.upload.upload_id, devices }),
+        body: JSON.stringify({
+            upload_id: state.upload.upload_id,
+            devices,
+            post_update_cmd: postUpdateCmd || null,
+        }),
     });
     if (!r.ok) {
         const j = await r.json().catch(() => ({}));
@@ -289,6 +353,29 @@ async function retryAllFailed() {
         if (card.badgeEl.dataset.status === "failed") {
             await retryDevice(serial);
         }
+    }
+}
+
+async function identifyDevice(serial) {
+    const c = state.cards.get(serial);
+    if (!c) return;
+    const btn = c.identifyBtn;
+    const prevText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Blinking…";
+    try {
+        const r = await fetch(`/api/devices/${encodeURIComponent(serial)}/identify`, {
+            method: "POST",
+        });
+        if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            appendLog(serial, `identify failed: ${j.detail || r.status}`, "err");
+        }
+    } catch (err) {
+        appendLog(serial, `identify error: ${err}`, "err");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = prevText;
     }
 }
 

@@ -60,12 +60,14 @@ class FlasherContext:
         env_file: Path | None,
         unoq_default_password: str | None,
         project_root: Path,
+        post_update_cmd: str | None = None,
     ) -> None:
         self.app_folder = app_folder
         self.setup_script = setup_script
         self.env_file = env_file
         self.unoq_default_password = unoq_default_password
         self.project_root = project_root
+        self.post_update_cmd = post_update_cmd
 
     @property
     def properties_file(self) -> Path | None:
@@ -243,6 +245,25 @@ async def flash_device(
             )
         )
         return False
+
+    # 8. post-update command (optional). Failure here is non-fatal — the device
+    # is already flashed; this just installs example deps / runs final setup.
+    async def stage_post_update() -> bool:
+        if not ctx.post_update_cmd:
+            await log(
+                "No post-update command configured; skipping.",
+                stage="post_update",
+            )
+            return True
+        cb = await line_cb_for("post_update")
+        rc, _ = await adb.shell(
+            serial,
+            f"source /etc/profile; {ctx.post_update_cmd}",
+            cb,
+        )
+        return rc == 0
+
+    await run_stage("post_update", stage_post_update, required=False)
 
     await emit(
         DeviceFinishedEvent(
