@@ -18,12 +18,27 @@ set_status_led() {
     # $1 = "green" | "red"
     local R=0 G=0 B=0
     if [ "$1" = "green" ]; then G=1; else R=1; fi
-    for COLOR in red green blue; do
-        echo none > /sys/class/leds/${COLOR}:user/trigger 2>/dev/null || true
+
+    # Support both firmware naming schemes:
+    #   older: red:user, green:user, blue:user
+    #   newer: unoq:user-red1, unoq:user-green1, unoq:user-blue1
+    local LED_R LED_G LED_B
+    if [ -d /sys/class/leds/unoq:user-red1 ]; then
+        LED_R="unoq:user-red1"
+        LED_G="unoq:user-green1"
+        LED_B="unoq:user-blue1"
+    else
+        LED_R="red:user"
+        LED_G="green:user"
+        LED_B="blue:user"
+    fi
+
+    for LED in "$LED_R" "$LED_G" "$LED_B"; do
+        echo none > /sys/class/leds/${LED}/trigger 2>/dev/null || true
     done
-    echo $R > /sys/class/leds/red:user/brightness   2>/dev/null || true
-    echo $G > /sys/class/leds/green:user/brightness 2>/dev/null || true
-    echo $B > /sys/class/leds/blue:user/brightness  2>/dev/null || true
+    echo $R > /sys/class/leds/${LED_R}/brightness 2>/dev/null || true
+    echo $G > /sys/class/leds/${LED_G}/brightness 2>/dev/null || true
+    echo $B > /sys/class/leds/${LED_B}/brightness 2>/dev/null || true
 }
 
 print_summary() {
