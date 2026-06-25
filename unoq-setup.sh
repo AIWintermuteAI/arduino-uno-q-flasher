@@ -163,3 +163,18 @@ log "Running arduino-app-cli system update..."
 if ! arduino-app-cli system update --yes; then
    add_error "arduino-app-cli system update failed"
 fi
+
+# ── CLI version check (optional) ─────────────────────────────────────────────
+if [ -n "${UNOQ_APP_CLI_VERSION:-}" ]; then
+    log "Checking arduino-app-cli version (expected: ${UNOQ_APP_CLI_VERSION})..."
+    CLI_VERSION_OUTPUT=$(arduino-app-cli version 2>&1)
+    # First line is "Arduino App CLI version X.Y.Z" — extract the last token
+    CLI_VERSION_ACTUAL=$(echo "$CLI_VERSION_OUTPUT" | head -1 | awk '{print $NF}')
+    if [ "$CLI_VERSION_ACTUAL" = "$UNOQ_APP_CLI_VERSION" ]; then
+        log "arduino-app-cli version OK: ${UNOQ_APP_CLI_VERSION}"
+    else
+        add_error "arduino-app-cli version mismatch: expected ${UNOQ_APP_CLI_VERSION}, got ${CLI_VERSION_ACTUAL}"
+    fi
+else
+    log "UNOQ_APP_CLI_VERSION not set, skipping version check."
+fi
