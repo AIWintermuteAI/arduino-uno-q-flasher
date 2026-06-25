@@ -58,8 +58,8 @@ fi
 
 CURRENT_USER=$(whoami)
 log "Current user: $CURRENT_USER"
-if [ "$CURRENT_USER" != "arduino" ]; then
-    add_error "Current user is not arduino, this device is too far out of date or the user has been modified. Please flash the latest image from https://docs.arduino.cc/tutorials/uno-q/update-image/ and run this setup script again."
+if [ "$CURRENT_USER" != "arduino" ] && [ "$CURRENT_USER" != "root" ]; then
+    add_error "Current user is not arduino or root, this device is too far out of date or the user has been modified. Please flash the latest image from https://docs.arduino.cc/tutorials/uno-q/update-image/ and run this setup script again."
     exit 1
 fi
 
@@ -145,6 +145,6 @@ fi
 
 # ── System update ─────────────────────────────────────────────────────────────
 log "Running arduino-app-cli system update..."
-if ! arduino-app-cli system update --yes; then
+if ! arduino-app-cli system update; then
    add_error "arduino-app-cli system update failed"
 fi

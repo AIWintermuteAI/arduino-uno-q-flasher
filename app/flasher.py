@@ -219,7 +219,7 @@ async def flash_device(
     async def stage_run_setup() -> bool:
         rc, _ = await adb.shell(
             serial,
-            f"source /etc/profile; bash {REMOTE_SETUP_SCRIPT_PATH}",
+            f". /etc/profile; bash {REMOTE_SETUP_SCRIPT_PATH}",
             line_cb_run_setup,
         )
         return rc == 0

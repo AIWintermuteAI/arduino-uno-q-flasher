@@ -133,8 +133,8 @@ process_device() {
             log "$device" "Password change may have already happened or failed. Output: $command_output"
         fi
     fi
-    
-    if ! adb -s "$device" shell "source /etc/profile; bash /home/arduino/.${UNOQ_SCRIPT}"; then
+
+    if ! adb -s "$device" shell ". /etc/profile; bash /home/arduino/.${UNOQ_SCRIPT}"; then
         log "$device" "Remote setup script execution failed."
         return 1
     fi
