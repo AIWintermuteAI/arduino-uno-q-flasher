@@ -23,6 +23,7 @@ const state = {
     flashSelectedCount: 0,
     flashRunId: null,
     flashSocket: null,
+    flashAndProvision: false,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -135,7 +136,7 @@ function wireControls() {
         refreshHealth();
         refreshDevices();
     });
-    $("#start-btn").addEventListener("click", startRun);
+    $("#start-btn").addEventListener("click", startAll);
     $("#retry-failed-btn").addEventListener("click", retryAllFailed);
     $("#open-settings-btn").addEventListener("click", openSettings);
     $("#close-settings-btn").addEventListener("click", () => {
@@ -143,8 +144,9 @@ function wireControls() {
     });
     $("#save-settings-btn").addEventListener("click", saveSettings);
 
-    // Flash controls
+    // Flash controls — standalone "Flash only" path
     $("#flash-btn").addEventListener("click", () => {
+        state.flashAndProvision = false;
         $("#edl-board-count").textContent = state.flashSelectedCount;
         $("#edl-modal").hidden = false;
     });
@@ -153,7 +155,27 @@ function wireControls() {
     });
     $("#edl-continue-btn").addEventListener("click", async () => {
         $("#edl-modal").hidden = true;
-        await startFlashRun(state.flashSelectedCount);
+        const count = state.flashSelectedCount;
+        let result;
+        try {
+            result = await startFlashRun(count);
+        } catch {
+            updateStartButton();
+            return;
+        }
+        if (!state.flashAndProvision) {
+            updateStartButton();
+            return;
+        }
+        // Flash-then-provision path
+        if (result.success_count < result.total) {
+            $("#run-status").textContent =
+                `${result.success_count}/${result.total} boards flashed — fix failures before provisioning.`;
+        } else {
+            $("#run-status").textContent =
+                `All ${result.total} board${result.total > 1 ? 's' : ''} flashed \u2014 reconnect boards, hit Refresh, then Start all.`;
+        }
+        updateStartButton();
     });
 }
 
@@ -255,7 +277,18 @@ function updateStartButton() {
 
 // ---------- runs ----------
 
-async function startRun() {
+async function startAll() {
+    if (state.flashSelectedCount > 0) {
+        // Some boards need flashing first — show EDL instructions
+        state.flashAndProvision = true;
+        $("#edl-board-count").textContent = state.flashSelectedCount;
+        $("#edl-modal").hidden = false;
+    } else {
+        await runProvisioning();
+    }
+}
+
+async function runProvisioning() {
     if (state.devices.length === 0) return;
     const devices = state.devices.map((d) => {
         const skip = collectSkip(d.serial);
@@ -274,7 +307,7 @@ async function startRun() {
     }
     const j = await r.json();
     state.runId = j.run_id;
-    $("#run-status").textContent = `run ${j.run_id} in progress…`;
+    $("#run-status").textContent = `run ${j.run_id} in progress\u2026`;
     $("#start-btn").disabled = true;
     $("#retry-failed-btn").disabled = true;
     openWs(j.run_id);
@@ -348,7 +381,7 @@ function handleEvent(ev) {
             c.retryBtn.hidden = true;
             c.failureEl.hidden = true;
             c.summaryEl.hidden = true;
-            c.elapsedEl.hidden = false; 
+            c.elapsedEl.hidden = false;
             c.start_time = Date.now();
             break;
         }
