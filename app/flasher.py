@@ -55,7 +55,7 @@ class FlasherContext:
 
     def __init__(
         self,
-        app_folder: Path,
+        app_folder: Path | None,
         setup_script: Path,
         env_file: Path | None,
         unoq_default_password: str | None,
@@ -69,9 +69,10 @@ class FlasherContext:
 
     @property
     def properties_file(self) -> Path | None:
-        candidate = self.app_folder / PROPERTIES_FILE_NAME
-        if candidate.is_file():
-            return candidate
+        if self.app_folder:
+            candidate = self.app_folder / PROPERTIES_FILE_NAME
+            if candidate.is_file():
+                return candidate
         candidate2 = self.project_root / PROPERTIES_FILE_NAME
         if candidate2.is_file():
             return candidate2
@@ -157,6 +158,8 @@ async def flash_device(
         rc, _ = await adb.push(serial, ctx.app_folder, APPS_TARGET_DIR, cb)
         return rc == 0
 
+    if ctx.app_folder is None:
+        skip_stages = skip_stages | {"push_app"}
     if not await run_stage("push_app", stage_push_app, required=True):
         return await fail("Failed to push app folder.")
 

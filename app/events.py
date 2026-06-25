@@ -25,7 +25,7 @@ ALL_STAGES: tuple[Stage, ...] = (
 )
 
 # Stages the user can toggle off from the UI. The others are required.
-OPTIONAL_STAGES: frozenset[Stage] = frozenset({"change_password", "push_properties"})
+OPTIONAL_STAGES: frozenset[Stage] = frozenset({"push_app", "change_password", "push_properties"})
 
 DeviceStatus = Literal["idle", "running", "success", "failed", "skipped"]
 StageStatus = Literal["started", "completed", "failed", "skipped"]
@@ -92,7 +92,7 @@ class DeviceConfig(BaseModel):
 
 
 class StartRunRequest(BaseModel):
-    upload_id: str
+    upload_id: str | None = None
     devices: list[DeviceConfig]
 
 

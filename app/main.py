@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     # Load .env from project root so UNOQ_DEFAULT_PASSWORD is available.
     env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
-        load_dotenv(env_path)
+        load_dotenv(env_path, override=True)
     _sweep_old_uploads(UPLOADS_DIR, max_age_hours=24)
     yield
 
@@ -208,8 +208,8 @@ async def upload(
 
 @app.post("/api/runs")
 async def start_run(req: StartRunRequest) -> dict:
-    upload = registry.get_upload(req.upload_id)
-    if upload is None:
+    upload = registry.get_upload(req.upload_id) if req.upload_id else None
+    if req.upload_id and upload is None:
         raise HTTPException(status_code=404, detail="upload_id not found")
     if not req.devices:
         raise HTTPException(status_code=400, detail="no devices selected")
@@ -223,7 +223,7 @@ async def start_run(req: StartRunRequest) -> dict:
 
     env_file = PROJECT_ROOT / ".env"
     ctx = FlasherContext(
-        app_folder=upload.folder,
+        app_folder=upload.folder if upload else None,
         setup_script=setup_script,
         env_file=env_file if env_file.is_file() else None,
         unoq_default_password=os.environ.get("UNOQ_DEFAULT_PASSWORD"),
@@ -252,7 +252,7 @@ async def retry_device(
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
     # If the upload was already cleaned up, we cannot retry the push_app step.
-    if run.upload is None and not run.ctx.app_folder.exists():
+    if run.upload is None and run.ctx.app_folder is not None and not run.ctx.app_folder.exists():
         raise HTTPException(
             status_code=410,
             detail="staged upload was cleaned up; please re-upload the folder.",

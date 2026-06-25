@@ -225,7 +225,6 @@ function approxSize(files) {
 
 function updateStartButton() {
     const ready =
-        state.upload &&
         state.devices.length > 0 &&
         state.runId === null &&
         state.wifiOk;
@@ -238,7 +237,7 @@ function updateStartButton() {
 // ---------- runs ----------
 
 async function startRun() {
-    if (!state.upload || state.devices.length === 0) return;
+    if (state.devices.length === 0) return;
     const devices = state.devices.map((d) => {
         const skip = collectSkip(d.serial);
         return { serial: d.serial, skip_stages: skip };
@@ -247,7 +246,7 @@ async function startRun() {
     const r = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upload_id: state.upload.upload_id, devices }),
+        body: JSON.stringify({ upload_id: state.upload?.upload_id ?? null, devices }),
     });
     if (!r.ok) {
         const j = await r.json().catch(() => ({}));
