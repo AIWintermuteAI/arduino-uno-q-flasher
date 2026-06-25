@@ -145,6 +145,6 @@ fi
 
 # ── System update ─────────────────────────────────────────────────────────────
 log "Running arduino-app-cli system update..."
-if ! arduino-app-cli system update; then
+if ! arduino-app-cli system update --yes; then
    add_error "arduino-app-cli system update failed"
 fi
