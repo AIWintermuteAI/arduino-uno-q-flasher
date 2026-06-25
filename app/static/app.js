@@ -19,6 +19,10 @@ const state = {
     runId: null,
     ws: null,
     wifiOk: false,
+    // flash state
+    flashSelectedCount: 0,
+    flashRunId: null,
+    flashSocket: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -110,8 +114,10 @@ function renderDeviceGrid() {
         const failureEl = node.querySelector(".failure-reason");
         const summaryEl = node.querySelector(".summary-panel");
         const skipInputs = Array.from(node.querySelectorAll(".skip-toggle"));
+        const flashToggle = node.querySelector(".flash-toggle");
 
         retryBtn.addEventListener("click", () => retryDevice(d.serial));
+        flashToggle.addEventListener("change", updateFlashButton);
 
         grid.appendChild(node);
         state.cards.set(d.serial, {
@@ -136,6 +142,19 @@ function wireControls() {
         $("#settings-panel").hidden = true;
     });
     $("#save-settings-btn").addEventListener("click", saveSettings);
+
+    // Flash controls
+    $("#flash-btn").addEventListener("click", () => {
+        $("#edl-board-count").textContent = state.flashSelectedCount;
+        $("#edl-modal").hidden = false;
+    });
+    $("#edl-cancel-btn").addEventListener("click", () => {
+        $("#edl-modal").hidden = true;
+    });
+    $("#edl-continue-btn").addEventListener("click", async () => {
+        $("#edl-modal").hidden = true;
+        await startFlashRun(state.flashSelectedCount);
+    });
 }
 
 async function openSettings() {
@@ -462,3 +481,111 @@ function resetCard(serial) {
 }
 
 init();
+
+// ---------- flash controller ----------
+
+function updateFlashButton() {
+    state.flashSelectedCount = $$(`.flash-toggle:checked`).length;
+    const controls = $("#flash-controls");
+    const btn = $("#flash-btn");
+    if (state.flashSelectedCount > 0) {
+        controls.hidden = false;
+        btn.textContent = `Flash ${state.flashSelectedCount} board${state.flashSelectedCount > 1 ? 's' : ''}`;
+    } else {
+        controls.hidden = true;
+    }
+}
+
+async function startFlashRun(boardCount) {
+    $("#flash-status").textContent = "Starting\u2026";
+
+    // Replace device grid with flash slot cards
+    const grid = $("#devices-grid");
+    grid.innerHTML = "";
+    const tpl = $("#flash-slot-card-template");
+    for (let i = 0; i < boardCount; i++) {
+        const card = tpl.content.firstElementChild.cloneNode(true);
+        card.dataset.slot = i;
+        card.querySelector(".slot-label").textContent = `Board ${i + 1} / ${boardCount}`;
+        grid.appendChild(card);
+    }
+
+    let res;
+    try {
+        res = await fetch("/api/flash-runs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ board_count: boardCount }),
+        });
+    } catch (e) {
+        $("#flash-status").textContent = `Network error: ${e}`;
+        throw e;
+    }
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const msg = err.detail || `Error ${res.status}`;
+        $("#flash-status").textContent = msg;
+        throw new Error(msg);
+    }
+    const { flash_run_id } = await res.json();
+    state.flashRunId = flash_run_id;
+    return new Promise(resolve => openFlashWs(flash_run_id, boardCount, resolve));
+}
+
+function openFlashWs(flashRunId, boardCount, onFinished) {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    let finished = false;
+    const settle = (result) => { if (!finished) { finished = true; onFinished?.(result); } };
+    state.flashSocket = new WebSocket(`${proto}://${location.host}/ws/flash-runs/${flashRunId}`);
+    state.flashSocket.onmessage = (msg) => {
+        try {
+            const ev = JSON.parse(msg.data);
+            handleFlashEvent(ev, boardCount);
+            if (ev.type === "flash_run_finished") {
+                settle({ success_count: ev.success_count, total: ev.total });
+            }
+        } catch (e) {
+            console.error("flash event parse error", e);
+        }
+    };
+    state.flashSocket.onclose = () => {
+        settle({ success_count: 0, total: boardCount });
+        $("#flash-status").textContent = "";
+    };
+}
+
+function handleFlashEvent(event, boardCount) {
+    const statusEl = $("#flash-status");
+    if (event.type === "flash_slot_started") {
+        statusEl.textContent = `Flashing board ${event.slot + 1} of ${event.total}\u2026`;
+        const card = document.querySelector(`.flash-slot-card[data-slot="${event.slot}"]`);
+        if (card) {
+            const badge = card.querySelector(".status-badge");
+            badge.dataset.status = "running";
+            badge.textContent = "flashing";
+            card.querySelector(".progress-fill").style.width = "50%";
+        }
+    } else if (event.type === "flash_log") {
+        const card = document.querySelector(`.flash-slot-card[data-slot="${event.slot}"]`);
+        if (card) {
+            const log = card.querySelector(".log-panel");
+            log.textContent += event.line + "\n";
+            log.scrollTop = log.scrollHeight;
+        }
+    } else if (event.type === "flash_slot_finished") {
+        const card = document.querySelector(`.flash-slot-card[data-slot="${event.slot}"]`);
+        if (card) {
+            const badge = card.querySelector(".status-badge");
+            badge.dataset.status = event.result;
+            badge.textContent = event.result;
+            card.querySelector(".progress-fill").style.width = event.result === "success" ? "100%" : "0%";
+        }
+    } else if (event.type === "flash_run_finished") {
+        const allOk = event.success_count === event.total;
+        statusEl.textContent = allOk
+            ? `All ${event.total} board${event.total > 1 ? 's' : ''} flashed.`
+            : `${event.success_count}/${event.total} boards flashed. Check failures above.`;
+        state.flashSelectedCount = 0;
+        $("#flash-controls").hidden = true;
+    }
+}

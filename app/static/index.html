@@ -11,11 +11,11 @@
         <img src="https://cdn.prod.website-files.com/618cdeef45d18e4ef2fd85f3/618e33d89badebdfe7c5897a_Logo%20(2).svg" alt="Logo" style="height: 32px;" />
         <h1 style="margin-left: 15px;">Arduino UNO Q Flasher</h1>
         <div id="health" class="health">checking...</div>
+        <button id="open-settings-btn" class="btn btn-small" style="margin-left: auto;">&#9881; Configure</button>
     </header>
 
     <div id="wifi-banner" class="banner banner-bad" hidden>
         <span id="wifi-banner-text">WiFi credentials missing — flashes will fail.</span>
-        <button id="open-settings-btn" class="btn btn-small">Configure</button>
     </div>
 
     <section id="settings-panel" class="settings-panel" hidden>
@@ -67,6 +67,11 @@
             <button id="retry-failed-btn" class="btn" disabled>Retry failed</btn>
             <span id="run-status" class="folder-info"></span>
         </div>
+
+        <div class="control-row" id="flash-controls" hidden>
+            <button id="flash-btn" class="btn btn-warning">Flash 0 boards</button>
+            <span id="flash-status" class="folder-info"></span>
+        </div>
     </section>
 
     <main id="devices-grid" class="devices-grid"></main>
@@ -89,6 +94,9 @@
                 <label><input type="checkbox" class="skip-toggle" data-stage="change_password" /> skip password</label>
                 <label><input type="checkbox" class="skip-toggle" data-stage="push_properties" /> skip properties</label>
             </div>
+            <div class="flash-row">
+                <label><input type="checkbox" class="flash-toggle" /> Flash OS image (old firmware)</label>
+            </div>
             <div class="failure-reason" hidden></div>
             <div class="summary-panel" hidden>
                 <div class="summary-header">Device setup summary</div>
@@ -101,5 +109,37 @@
     </template>
 
     <script src="/static/app.js"></script>
+
+    <div id="edl-modal" class="modal-overlay" hidden>
+        <div class="modal-box">
+            <h2>Prepare boards for EDL flashing</h2>
+            <ol>
+                <li>Disconnect all <strong id="edl-board-count">N</strong> selected boards from USB.</li>
+                <li>Locate the two EDL pins on each board.</li>
+                <li>Short the EDL pins with a jumper cable or cap.</li>
+                <li>With the jumper in place, reconnect all boards via USB-C.</li>
+            </ol>
+            <p class="modal-note">The app will flash them one at a time automatically. Only remove the EDL short after the board reboots.</p>
+            <div class="modal-actions">
+                <button id="edl-continue-btn" class="btn btn-primary">Continue — start flashing</button>
+                <button id="edl-cancel-btn" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <template id="flash-slot-card-template">
+        <div class="device-card flash-slot-card" data-slot="">
+            <div class="device-header">
+                <div class="device-title">
+                    <span class="slot-label"></span>
+                    <span class="status-badge" data-status="idle">idle</span>
+                </div>
+            </div>
+            <div class="progress-row">
+                <div class="progress-bar"><div class="progress-fill"></div></div>
+            </div>
+            <pre class="log-panel"></pre>
+        </div>
+    </template>
 </body>
 </html>
