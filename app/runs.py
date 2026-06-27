@@ -228,32 +228,21 @@ class Registry:
 @dataclass
 class FlashRun:
     flash_run_id: str
-    board_count: int
-    slots: dict[int, FlashSlotState] = field(default_factory=dict)
     subscribers: list[asyncio.Queue[FlashEvent]] = field(default_factory=list)
     event_log: list[FlashEvent] = field(default_factory=list)
     finished: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 def _apply_to_flash_slot_state(run: FlashRun, event: FlashEvent) -> None:
-    if isinstance(event, FlashSlotStartedEvent):
-        s = run.slots.get(event.slot)
-        if s:
-            s.status = "running"
-    elif isinstance(event, FlashSlotFinishedEvent):
-        s = run.slots.get(event.slot)
-        if s:
-            s.status = event.result  # type: ignore[assignment]
+    pass  # slot state tracking removed; script handles per-device logic
 
 
 def _add_flash_run_methods(cls: type) -> type:
     """Attach flash-run methods to Registry at module load time."""
 
-    def create_flash_run(self, board_count: int) -> FlashRun:
+    def create_flash_run(self) -> FlashRun:
         flash_run_id = uuid.uuid4().hex[:12]
-        run = FlashRun(flash_run_id=flash_run_id, board_count=board_count)
-        for i in range(board_count):
-            run.slots[i] = FlashSlotState(slot=i)
+        run = FlashRun(flash_run_id=flash_run_id)
         self._flash_runs[flash_run_id] = run
         return run
 
@@ -286,7 +275,6 @@ def _add_flash_run_methods(cls: type) -> type:
     async def run_flash(self, run: FlashRun) -> None:
         from .image_flasher import flash_boards
         success_count, total = await flash_boards(
-            run.board_count,
             lambda ev: self.emit_flash(run, ev),
         )
         await self.emit_flash(run, FlashRunFinishedEvent(success_count=success_count, total=total))

@@ -254,3 +254,45 @@ body.dark-mode .log-panel {
     border: none;
     padding: 0;
 }
+
+/* EDL flash log panel */
+#flash-log-panel {
+    margin: 0 1rem 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.flash-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: #f1f3f5;
+    border-bottom: 1px solid #dee2e6;
+}
+
+#flash-log {
+    margin: 0;
+    padding: 10px 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+body.dark-mode #flash-log-panel {
+    border-color: #2a2f37;
+}
+
+body.dark-mode .flash-log-header {
+    background: #161b22;
+    border-color: #2a2f37;
+}
+
+body.dark-mode #flash-log {
+    background: #0b0e12;
+    color: #c9d1d9;
+}

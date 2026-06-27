@@ -8,7 +8,7 @@ Routes:
   POST /api/runs                            -> start a new run for selected devices
   POST /api/runs/{id}/devices/{serial}/retry -> retry a device
   WS   /ws/runs/{id}                        -> stream events for a run
-  POST /api/flash-runs                      -> start an image flash run (N boards, EDL mode)
+  POST /api/flash-runs                      -> start an image flash run (detects EDL boards via flash-edl.sh)
   WS   /ws/flash-runs/{id}                  -> stream flash run events
 """
 from __future__ import annotations
@@ -309,20 +309,14 @@ def _sanitize(name: str) -> str:
 # ----- Image flash endpoints -----
 
 
-class StartFlashRunRequest(BaseModel):
-    board_count: int
-
-
 @app.post("/api/flash-runs")
-async def start_flash_run(req: StartFlashRunRequest) -> dict:
-    if req.board_count < 1 or req.board_count > 20:
-        raise HTTPException(status_code=400, detail="board_count must be between 1 and 20")
+async def start_flash_run() -> dict:
     if not flasher_cli_available():
         raise HTTPException(
             status_code=400,
-            detail="arduino-flasher-cli not found on PATH — install it first.",
+            detail="arduino-flasher-cli not found — install it first.",
         )
-    run = registry.create_flash_run(req.board_count)
+    run = registry.create_flash_run()
     asyncio.create_task(registry.run_flash(run))
     return {"flash_run_id": run.flash_run_id}
 

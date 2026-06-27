@@ -16,6 +16,11 @@ with live per-device logs and real-time status. Replaces the original
   ```
   UNOQ_DEFAULT_PASSWORD=your-new-password
   ```
+  You can also pin the expected `arduino-app-cli` version so setup fails fast
+  if the wrong version is installed on a board:
+  ```
+  UNOQ_APP_CLI_VERSION=0.11.1
+  ```
 - Optional **`properties.msgpack`** at the project root or inside the chosen
   app folder. If present, it is pushed to `/var/lib/arduino-app-cli/properties.msgpack`.
 
@@ -34,7 +39,43 @@ python -m app
 
 Open <http://localhost:8000>.
 
-## Using the UI
+## Flashing OS images (EDL mode)
+
+Use this when boards need a fresh OS image before provisioning.
+
+### Preparation
+
+Download the latest UNO Q Debian image from
+<https://www.arduino.cc/en/software/linux-images/> and place it in the project
+root **before** starting the app. The flasher picks up any file matching
+`arduino-unoq-debian-image-*.tar.zst` automatically; if none is found it falls
+back to downloading `latest` each time (slow). Example filename:
+
+```
+arduino-unoq-debian-image-20260528-558.tar.zst
+```
+
+You also need the `arduino-flasher-cli` binary in the project root. When it is
+present the **Flash EDL boards** button appears automatically.
+
+### Steps
+
+1. Put all boards into EDL mode (install the flashing jumper, then power-cycle).
+2. Click **Flash EDL boards**.
+3. A log panel opens showing live output. Each board takes roughly 5 minutes;
+   detailed per-board progress is not shown during the flash, only overall log
+   lines.
+4. When flashing is done, remove the EDL jumpers and reboot each board.
+5. Wait for the boards to finish booting (≈ 1–2 min).
+6. Click **Refresh devices** to detect them.
+7. Proceed with provisioning below.
+
+> **Tip:** boards are flashed one at a time, identified by their USB serial
+> number, so you can safely have multiple boards in EDL mode simultaneously.
+
+---
+
+## Provisioning
 
 1. **Connect** your UNO Q boards via USB. Click **Refresh devices**.
 2. Click **Choose app folder** and pick the folder you want pushed to
@@ -46,6 +87,7 @@ Open <http://localhost:8000>.
    - progress bar across the 7 stages
    - live-tailing log panel
 5. If a device fails, click **Retry** on its card.
+6. The LED on each board lights **green** on success or **red** on failure.
 
 The staged upload is removed from disk automatically once the run finishes.
 
